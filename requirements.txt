@@ -1,0 +1,29 @@
+# AI Scrum Master and Project Manager Assistant
+# Core dependencies for the backend system
+
+# HTTP client for async operations
+aiohttp>=3.8.0
+
+# Type hints support (for Python <3.9)
+typing-extensions>=4.0.0
+
+# Development and testing dependencies
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+
+# Code quality and formatting
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.0.0
+
+# Documentation
+sphinx>=6.0.0
+sphinx-rtd-theme>=1.2.0
+
+# Optional: Additional integrations
+# requests>=2.28.0  # Alternative HTTP client
+# httpx>=0.24.0    # Modern HTTP client with async support
+# pydantic>=2.0.0  # Data validation (if needed)
+# fastapi>=0.100.0  # Web framework (if building REST API)
+# uvicorn>=0.20.0   # ASGI server (if using FastAPI)
