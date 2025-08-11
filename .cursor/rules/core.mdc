@@ -1,0 +1,99 @@
+---
+description: Core development principles and code quality standards that apply to all projects
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Core Development Rules
+
+## Context-First Approach
+- **NEVER write code without understanding the system first**
+- Always examine existing files and patterns before making changes
+- Ask specific, necessary clarifying questions only
+- Follow established project conventions and patterns
+- Identify configuration files, environment variables, and dependencies
+
+## Code Quality Standards
+
+### General Principles
+- Use functional and declarative programming patterns over classes when possible
+- Prefer composition over inheritance
+- Write modular, reusable code with minimal duplication
+- Use descriptive variable names with auxiliary verbs (e.g., `isLoading`, `hasError`, `canSubmit`)
+- Keep functions small and focused on single responsibilities
+
+### Error Handling
+- Handle errors and edge cases at the beginning of functions
+- Use early returns for error conditions to avoid deeply nested conditionals
+- Implement proper try-catch blocks with specific error types
+- Provide meaningful error messages with context
+- Never silently fail - always log or handle errors appropriately
+
+### Type Safety
+- Use strong typing wherever available (TypeScript, type hints, etc.)
+- Avoid `any` types - strive for precise, explicit types
+- Enable strict typing in configuration files
+- Define interfaces/types for all data structures
+- Use generics for reusable components
+
+## Testing Requirements
+- Write tests alongside code, not as an afterthought
+- Include unit tests for core business logic
+- Test edge cases and error scenarios
+- Ensure all tests pass before considering work complete
+- Use descriptive test names that explain the scenario
+
+## Security & Performance
+
+### Security
+- Validate all inputs before processing
+- Sanitize data for output contexts (HTML, SQL, etc.)
+- Use parameterized queries to prevent injection attacks
+- Implement proper authentication and authorization
+- Follow principle of least privilege
+- Always use HTTPS for external requests
+
+### Performance
+- Minimize HTTP requests and payload sizes
+- Implement appropriate caching strategies
+- Use efficient algorithms and data structures
+- Consider lazy loading for non-critical resources
+- Profile and monitor performance regularly
+
+## Code Organization
+
+### Naming Conventions
+- Use `camelCase` for variables and functions
+- Use `PascalCase` for classes and components
+- Use `UPPER_CASE` for constants
+- Use `kebab-case` for file and directory names
+- Avoid abbreviations and ambiguous names
+
+### File Structure
+- Group related functionality together
+- Use clear, descriptive file and directory names
+- Keep configuration files organized and documented
+- Separate concerns (business logic, UI, data access)
+- Follow established project architecture patterns
+
+## Documentation & Comments
+- Write self-documenting code with clear intent
+- Add comments for complex business logic or algorithms
+- Document public APIs and interfaces
+- Keep README files updated with setup and usage instructions
+- Use JSDoc/docstrings for function documentation
+
+## Version Control
+- Use conventional commit messages (feat:, fix:, docs:, chore:, refactor:)
+- Keep commit messages under 60 characters for the subject line
+- Make atomic commits (one logical change per commit)
+- Write descriptive commit bodies when necessary
+- Squash related commits before merging
+
+## AI Interaction Guidelines
+- Be concise and direct in responses
+- Don't apologize for errors - identify and fix them
+- If code is incomplete, add TODO comments with specific next steps
+- Challenge vague or ambiguous requirements
+- Suggest improvements when current approach is suboptimal
+- Provide evidence and reasoning for technical decisions

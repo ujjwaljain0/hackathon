@@ -1,0 +1,92 @@
+---
+description: Guidelines for implementing new features and enhancements
+globs: ["src/**/*", "lib/**/*", "components/**/*"]
+alwaysApply: false
+---
+
+# Feature Development Guidelines
+
+## Pre-Development Analysis
+1. **System Assessment**
+   - List and examine relevant files in the target directory
+   - Identify existing patterns, conventions, and architectural decisions
+   - Review related components, utilities, and configuration files
+   - Understand data flow and state management approaches
+
+2. **Requirements Clarification**
+   - Identify inputs, outputs, and constraints
+   - Ask specific questions about edge cases and error scenarios
+   - Clarify integration points with existing systems
+   - Understand performance and scalability requirements
+
+## Implementation Strategy
+
+### Planning Phase
+- Break down complex features into smaller, testable units
+- Plan the implementation order (models → services → UI → tests)
+- Identify potential risks and mitigation strategies
+- Consider backward compatibility and migration needs
+
+### Development Phase
+- Start with data models and types/interfaces
+- Implement core business logic with comprehensive error handling
+- Build service/API layers with proper validation
+- Create user interface components following design system
+- Add integration points with existing systems
+
+### Integration Considerations
+- Ensure new code follows existing patterns and conventions
+- Reuse existing utilities and components when appropriate
+- Update related documentation and type definitions
+- Consider impact on existing functionality
+
+## Feature-Specific Best Practices
+
+### API Development
+- Design RESTful endpoints with clear resource naming
+- Implement proper HTTP status codes and error responses
+- Add request/response validation with detailed error messages
+- Include rate limiting and authentication checks
+- Document API endpoints with examples
+
+### UI Components
+- Follow established component patterns and naming conventions
+- Implement proper prop validation and default values
+- Add loading states and error boundaries
+- Ensure accessibility (ARIA labels, keyboard navigation)
+- Support responsive design and different screen sizes
+
+### State Management
+- Use established state management patterns (Redux, Context, etc.)
+- Keep state normalized and avoid deeply nested structures
+- Implement proper action creators and reducers
+- Add state validation and type safety
+- Consider state persistence and synchronization needs
+
+### Database/Data Layer
+- Design efficient database schemas with proper indexing
+- Implement data validation at multiple layers
+- Use transactions for multi-step operations
+- Add proper error handling and rollback mechanisms
+- Consider data migration and versioning strategies
+
+## Testing Strategy
+- Write unit tests for core business logic
+- Add integration tests for API endpoints
+- Include component tests for UI functionality
+- Test error scenarios and edge cases
+- Verify accessibility and performance requirements
+
+## Quality Assurance
+- Run all existing tests to ensure no regressions
+- Perform manual testing of the complete user flow
+- Test error scenarios and edge cases
+- Verify performance meets requirements
+- Check accessibility compliance
+
+## Documentation Updates
+- Update API documentation with new endpoints
+- Add code comments for complex logic
+- Update README files with new dependencies or setup steps
+- Document configuration changes
+- Add examples and usage instructions
