@@ -250,20 +250,32 @@ class GoogleAgentDevelopmentKitCoordinator:
                 if not self.jira_available:
                     return {"error": "Jira MCP server not available", "status": "unavailable"}
                 if name == "jira_get_issues":
-                    return await self.jira_agent.get_issues(**args)
+                    # Filter valid parameters for get_issues
+                    valid_params = {k: v for k, v in args.items() if k in ["project", "status", "assignee", "issue_type", "max_results"]}
+                    return await self.jira_agent.get_issues(**valid_params)
                 if name == "jira_create_issue":
-                    return await self.jira_agent.create_issue(**args)
+                    # Filter valid parameters for create_issue
+                    valid_params = {k: v for k, v in args.items() if k in ["project", "summary", "description", "issue_type", "priority", "assignee", "labels"]}
+                    return await self.jira_agent.create_issue(**valid_params)
                 if name == "jira_update_issue":
-                    return await self.jira_agent.update_issue(**args)
+                    # Filter valid parameters for update_issue
+                    valid_params = {k: v for k, v in args.items() if k in ["issue_key", "updates"]}
+                    return await self.jira_agent.update_issue(**valid_params)
             elif name.startswith("confluence_"):
                 if not self.confluence_available:
                     return {"error": "Confluence MCP server not available", "status": "unavailable"}
                 if name == "confluence_get_page":
-                    return await self.confluence_agent.get_page(**args)
+                    # Filter valid parameters for get_page
+                    valid_params = {k: v for k, v in args.items() if k in ["page_id", "title", "space_key"]}
+                    return await self.confluence_agent.get_page(**valid_params)
                 if name == "confluence_create_page":
-                    return await self.confluence_agent.create_page(**args)
+                    # Filter valid parameters for create_page
+                    valid_params = {k: v for k, v in args.items() if k in ["title", "content", "space_key", "parent_id", "labels"]}
+                    return await self.confluence_agent.create_page(**valid_params)
                 if name == "confluence_update_page":
-                    return await self.confluence_agent.update_page(**args)
+                    # Filter valid parameters for update_page
+                    valid_params = {k: v for k, v in args.items() if k in ["page_id", "updates"]}
+                    return await self.confluence_agent.update_page(**valid_params)
             raise ValueError(f"Unknown tool: {name}")
         except Exception as e:
             return {"error": str(e), "status": "error"}

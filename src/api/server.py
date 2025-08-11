@@ -7,7 +7,8 @@ from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from .models import (
     ErrorResponse,
@@ -21,6 +22,18 @@ from .models import (
     SprintCreationResult,
     TeamMemberSuggestion,
 )
+
+# Chat interface models
+from pydantic import BaseModel, Field
+
+class ChatMessage(BaseModel):
+    message: str = Field(..., description="User message")
+    session_id: Optional[str] = Field(None, description="Chat session ID")
+
+class ChatResponse(BaseModel):
+    response: str = Field(..., description="AI Scrum Master response")
+    session_id: str = Field(..., description="Chat session ID")
+    timestamp: datetime = Field(default_factory=datetime.now)
 from .project_orchestrator import ProjectOrchestrator
 
 # Configure logging
@@ -91,6 +104,17 @@ async def global_exception_handler(request, exc):
         ).dict()
     )
 
+
+# Chat interface endpoint
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_interface():
+    """Serve the chat interface HTML."""
+    try:
+        with open("chat_interface.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Chat interface not found</h1>", status_code=404)
 
 # Health check endpoint
 @app.get("/health", response_model=HealthCheck)
@@ -534,6 +558,82 @@ Focus on creating well-defined, achievable tasks that fit within the sprint time
         )
 
 
+# Chat endpoint for direct interaction with AI Scrum Master
+@app.post("/api/v1/chat", response_model=ChatResponse)
+async def chat_with_scrum_master(chat_message: ChatMessage):
+    """
+    Chat directly with the AI Scrum Master.
+    
+    This endpoint allows natural language interaction with the AI Scrum Master
+    for sprint planning, task breakdown, team coordination, and general
+    Scrum guidance.
+    """
+    global orchestrator
+    
+    if not orchestrator:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Orchestrator not available"
+        )
+    
+    # Generate session ID if not provided
+    session_id = chat_message.session_id or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    logger.info(f"💬 Chat request: {chat_message.message[:100]}...")
+    
+    try:
+        # Process with AI Scrum Master
+        responses = await orchestrator.coordinator.chat_execute(chat_message.message)
+        
+        # Combine all responses into a single chat response
+        combined_response = ""
+        for response in responses:
+            if response.success:
+                if isinstance(response.data, str):
+                    combined_response += f"{response.data}\n\n"
+                elif isinstance(response.data, dict):
+                    # Format structured data nicely
+                    if "issues" in response.data:
+                        combined_response += "🎫 **Created Issues:**\n"
+                        for issue in response.data.get("issues", []):
+                            combined_response += f"- {issue.get('key', 'N/A')}: {issue.get('summary', 'No title')}\n"
+                        combined_response += "\n"
+                    
+                    if "scrum_master_notes" in response.data:
+                        combined_response += "🤖 **Scrum Master Insights:**\n"
+                        for note in response.data.get("scrum_master_notes", []):
+                            combined_response += f"- {note}\n"
+                        combined_response += "\n"
+                    
+                    if "assignments" in response.data:
+                        combined_response += "👥 **Team Assignments:**\n"
+                        for member, tasks in response.data.get("assignments", {}).items():
+                            combined_response += f"- {member}: {len(tasks)} task(s)\n"
+                        combined_response += "\n"
+                else:
+                    combined_response += f"{response.data}\n\n"
+            else:
+                combined_response += f"❌ {response.agent_name}: {response.error_message}\n\n"
+        
+        # Clean up the response
+        combined_response = combined_response.strip()
+        if not combined_response:
+            combined_response = "🤖 I'm here to help with your Scrum processes! Please let me know what you need assistance with."
+        
+        return ChatResponse(
+            response=combined_response,
+            session_id=session_id,
+            timestamp=datetime.now()
+        )
+    
+    except Exception as e:
+        logger.error(f"❌ Chat error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Chat processing failed: {str(e)}"
+        )
+
+
 # API info endpoint
 @app.get("/api/v1/info")
 async def api_info():
@@ -544,6 +644,7 @@ async def api_info():
         "description": "REST API for automated project management using AI agents",
         "endpoints": {
             "health": "/health",
+            "chat_interface": "/chat",
             "create_sprint": "/api/v1/sprints/create",
             "execute_project": "/api/v1/projects/execute",
             "preview_breakdown": "/api/v1/projects/breakdown",

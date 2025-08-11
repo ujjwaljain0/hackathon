@@ -38,6 +38,46 @@ class JiraAgent(BaseAgent):
             return await self.update_issue(**params)
         raise ValueError(f"Unknown Jira action: {action}")
 
+    async def get_projects(self) -> List[Dict[str, Any]]:
+        """Get list of available projects from Jira."""
+        cache_key = "projects:list"
+        cached = self._get_cache(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            response = await self.mcp_client.request("/project", method="GET")
+            projects = response if isinstance(response, list) else []
+            self._set_cache(cache_key, projects)
+            logger.info(f"📋 Retrieved {len(projects)} available Jira projects")
+            return projects
+        except Exception as e:
+            logger.error(f"❌ Failed to retrieve projects: {str(e)}")
+            return []
+
+    async def find_project_by_name(self, project_name: str) -> Optional[str]:
+        """Find project key by project name (case-insensitive search)."""
+        projects = await self.get_projects()
+        
+        # Try exact match first
+        for project in projects:
+            if project.get("name", "").lower() == project_name.lower():
+                return project.get("key", "")
+        
+        # Try partial match
+        for project in projects:
+            if project_name.lower() in project.get("name", "").lower():
+                return project.get("key", "")
+        
+        # Try transformed key match
+        transformed_key = project_name.replace(" ", "").upper()
+        for project in projects:
+            if project.get("key", "").upper() == transformed_key:
+                return project.get("key", "")
+        
+        logger.warning(f"⚠️ No project found matching '{project_name}' or transformed key '{transformed_key}'")
+        return None
+
     async def get_issues(
         self,
         project: Optional[str] = None,
@@ -46,15 +86,23 @@ class JiraAgent(BaseAgent):
         issue_type: Optional[str] = None,
         max_results: int = 50,
     ) -> List[JiraIssue]:
-        cache_key = f"issues:{project}:{status}:{assignee}:{issue_type}:{max_results}"
+        # Find the actual project key if project name is provided
+        project_key = None
+        if project:
+            project_key = await self.find_project_by_name(project)
+            if not project_key:
+                logger.error(f"❌ Project '{project}' not found in Jira")
+                return []
+        
+        cache_key = f"issues:{project_key}:{status}:{assignee}:{issue_type}:{max_results}"
         cached = self._get_cache(cache_key)
         if cached is not None:
             return cached
 
         # Build JQL query for Jira REST API
         jql_parts = []
-        if project:
-            jql_parts.append(f"project = {project}")
+        if project_key:
+            jql_parts.append(f"project = {project_key}")
         if status:
             jql_parts.append(f"status = '{status}'")
         if assignee:
@@ -106,12 +154,17 @@ class JiraAgent(BaseAgent):
         assignee: Optional[str] = None,
         labels: Optional[List[str]] = None,
     ) -> JiraIssue:
-        logger.info(f"🎫 Creating Jira issue in project '{project}': {summary}")
+        # Find the actual project key by project name
+        project_key = await self.find_project_by_name(project)
+        if not project_key:
+            raise ValueError(f"❌ Project '{project}' not found in Jira. Available projects: {[p.get('key', '') for p in await self.get_projects()]}")
+        
+        logger.info(f"🎫 Creating Jira issue in project '{project}' (key: {project_key}): {summary}")
         logger.info(f"📝 Issue details - Type: {issue_type}, Priority: {priority}, Assignee: {assignee}")
         
         payload = {
             "fields": {
-                "project": {"key": project},
+                "project": {"key": project_key},
                 "summary": summary,
                 "description": description or "",
                 "issuetype": {"name": issue_type},
@@ -161,7 +214,9 @@ class JiraAgent(BaseAgent):
         logger.info(f"   📅 Created: {issue.created.strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info(f"   🔗 URL: https://athonprompt.atlassian.net/browse/{issue.key}")
         
-        self._invalidate_project_cache(project)
+        # Invalidate cache for the project of the created issue
+        if project_key:
+            self._invalidate_project_cache(project_key)
         return issue
 
     async def update_issue(self, issue_key: str, updates: Dict[str, Any]) -> JiraIssue:
@@ -203,7 +258,9 @@ class JiraAgent(BaseAgent):
         logger.info(f"   📅 Updated: {issue.updated.strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info(f"   🔗 URL: https://athonprompt.atlassian.net/browse/{issue.key}")
         
-        self._invalidate_project_cache(issue.project)
+        # Invalidate cache for the project of the updated issue
+        if issue.project:
+            self._invalidate_project_cache(issue.project)
         return issue
 
     def _get_cache(self, key: str):
@@ -220,7 +277,9 @@ class JiraAgent(BaseAgent):
         self.cache[key] = {"val": value, "ts": datetime.now()}
 
     def _invalidate_project_cache(self, project: str) -> None:
-        to_delete = [k for k in self.cache.keys() if f":{project}:" in k]
+        # Transform project name to valid Jira project key for cache invalidation
+        project_key = project.replace(" ", "").upper() if project else ""
+        to_delete = [k for k in self.cache.keys() if f":{project_key}:" in k]
         for k in to_delete:
             self.cache.pop(k, None)
 
