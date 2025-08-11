@@ -26,6 +26,14 @@ export default function Dashboard() {
   }, [loadInitialData])
 
   const content = useMemo(() => {
+    if (isLoading) {
+      return (
+        <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
+          <LoadingSpinner />
+        </div>
+      )
+    }
+
     switch (currentView) {
       case 'overview':
         return <OverviewDashboard />
@@ -40,14 +48,34 @@ export default function Dashboard() {
         return <AnalyticsDashboard />
       case 'team':
         return (
-          <div className="p-8 text-muted-foreground">Team directory coming soon...</div>
+          <div className="p-8">
+            <h1 className="text-2xl font-bold mb-4">Team Directory</h1>
+            <p className="text-muted-foreground">Team management features coming soon...</p>
+          </div>
+        )
+      case 'calendar':
+        return (
+          <div className="p-8">
+            <h1 className="text-2xl font-bold mb-4">Calendar</h1>
+            <p className="text-muted-foreground">Calendar view coming soon...</p>
+          </div>
+        )
+      case 'messages':
+        return (
+          <div className="p-8">
+            <h1 className="text-2xl font-bold mb-4">Messages</h1>
+            <p className="text-muted-foreground">Team messaging coming soon...</p>
+          </div>
         )
       default:
         return (
-          <div className="p-8 text-muted-foreground">This section is under construction.</div>
+          <div className="p-8">
+            <h1 className="text-2xl font-bold mb-4">Under Construction</h1>
+            <p className="text-muted-foreground">This section is being built...</p>
+          </div>
         )
     }
-  }, [currentView])
+  }, [currentView, isLoading])
 
   return (
     <div className="min-h-screen bg-background text-foreground flex">
@@ -60,19 +88,13 @@ export default function Dashboard() {
       />
 
       {/* Main area */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0 w-full">
         {/* Top bar */}
         <TopBar />
 
         {/* Content */}
-        <main className="flex-1 min-w-0">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
-              <LoadingSpinner />
-            </div>
-          ) : (
-            content
-          )}
+        <main className="flex-1 overflow-auto bg-background">
+          {content}
         </main>
       </div>
     </div>

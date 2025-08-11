@@ -1,0 +1,21 @@
+npm error code ERESOLVE
+npm error ERESOLVE unable to resolve dependency tree
+npm error
+npm error While resolving: scrum-dashboard@0.1.0
+npm error Found: storybook@8.6.14
+npm error node_modules/storybook
+npm error   dev storybook@"8.6.14" from the root project
+npm error
+npm error Could not resolve dependency:
+npm error peer storybook@"^9.1.1" from eslint-plugin-storybook@9.1.1
+npm error node_modules/eslint-plugin-storybook
+npm error   dev eslint-plugin-storybook@"*" from the root project
+npm error
+npm error Fix the upstream dependency conflict, or retry
+npm error this command with --force or --legacy-peer-deps
+npm error to accept an incorrect (and potentially broken) dependency resolution.
+npm error
+npm error
+npm error For a full report see:
+npm error /Users/divyank.jain/.npm/_logs/2025-08-11T10_06_29_523Z-eresolve-report.txt
+npm error A complete log of this run can be found in: /Users/divyank.jain/.npm/_logs/2025-08-11T10_06_29_523Z-debug-0.log
