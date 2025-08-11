@@ -1,39 +1,24 @@
 # AI Scrum Master and Project Manager Assistant
-# Core dependencies for the backend system
+# Core dependencies for sprint creation API
 
-# HTTP client for async operations
+# Core framework and server
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.0.0
+
+# HTTP client for async operations with external APIs
 aiohttp>=3.8.0
+
+# LLM integration via LiteLLM
+litellm>=1.41.0
+
+# Environment configuration
+python-dotenv>=1.0.1
 
 # Type hints support (for Python <3.9)
 typing-extensions>=4.0.0
 
-# Development and testing dependencies
+# Development dependencies (optional)
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
-pytest-cov>=4.0.0
-
-# Code quality and formatting
 black>=23.0.0
-flake8>=6.0.0
-mypy>=1.0.0
-
-# Documentation
-sphinx>=6.0.0
-sphinx-rtd-theme>=1.2.0
-
-# Agent Development Kit style orchestration via LiteLLM
-litellm>=1.41.0
-python-dotenv>=1.0.1
-
-# Web framework for ADK web interface
-fastapi>=0.104.0
-uvicorn>=0.24.0
-jinja2>=3.1.0
-python-multipart>=0.0.6
-
-# Optional: Additional integrations
-# requests>=2.28.0  # Alternative HTTP client
-# httpx>=0.24.0    # Modern HTTP client with async support
-# pydantic>=2.0.0  # Data validation (if needed)
-# fastapi>=0.100.0  # Web framework (if building REST API)
-# uvicorn>=0.20.0   # ASGI server (if using FastAPI)
