@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -14,8 +15,10 @@ logger = logging.getLogger(__name__)
 
 
 class ConfluenceAgent(BaseAgent):
-    def __init__(self, mcp_server_url: str = "http://localhost:8001") -> None:
-        self.mcp_client = MCPClient(mcp_server_url, "confluence")
+    def __init__(self, mcp_server_url: str = "https://athonprompt.atlassian.net/wiki/rest/api") -> None:
+        # Disable SSL verification for development - configure verify_ssl=True for production
+        verify_ssl = os.getenv("MCP_VERIFY_SSL", "false").lower() == "true"
+        self.mcp_client = MCPClient(mcp_server_url, "confluence", verify_ssl=verify_ssl)
         self.agent_name = "confluence_agent"
         self.cache: Dict[str, Any] = {}
         self.cache_ttl_seconds = 300
@@ -46,29 +49,35 @@ class ConfluenceAgent(BaseAgent):
         if cached is not None:
             return cached
 
-        response = await self.mcp_client.request(
-            "/confluence/pages",
-            method="GET",
-            params={"pageId": page_id or "", "title": title or "", "spaceKey": space_key or ""},
-        )
-        pages = response.get("pages", [])
+        # Use Confluence REST API search
+        if page_id:
+            response = await self.mcp_client.request(f"/content/{page_id}", method="GET", params={"expand": "body.storage,space,version,ancestors"})
+            pages = [response] if response else []
+        else:
+            params = {"expand": "body.storage,space,version,ancestors"}
+            if title:
+                params["title"] = title
+            if space_key:
+                params["spaceKey"] = space_key
+            response = await self.mcp_client.request("/content", method="GET", params=params)
+            pages = response.get("results", [])
         if not pages:
             return None
         data = pages[0]
         page = ConfluencePage(
             id=data["id"],
             title=data["title"],
-            content=data["content"],
-            space_key=data["spaceKey"],
-            parent_id=data.get("parentId"),
-            version=data["version"],
-            status=data["status"],
-            created=datetime.fromisoformat(data["created"]),
-            updated=datetime.fromisoformat(data["updated"]),
-            author=data["author"],
-            labels=data.get("labels", []),
-            attachments=data.get("attachments", []),
-            children=data.get("children", []),
+            content=data.get("body", {}).get("storage", {}).get("value", ""),
+            space_key=data.get("space", {}).get("key", ""),
+            parent_id=data.get("ancestors", [])[-1]["id"] if data.get("ancestors") else None,
+            version=data.get("version", {}).get("number", 1),
+            status=data.get("status", "current"),
+            created=datetime.fromisoformat(data.get("createdDate", "").replace("Z", "+00:00")) if data.get("createdDate") else datetime.now(),
+            updated=datetime.fromisoformat(data.get("version", {}).get("when", "").replace("Z", "+00:00")) if data.get("version", {}).get("when") else datetime.now(),
+            author=data.get("version", {}).get("by", {}).get("displayName", ""),
+            labels=data.get("metadata", {}).get("labels", {}).get("results", []),
+            attachments=[],
+            children=[],
         )
         self._set_cache(cache_key, page)
         return page
@@ -81,41 +90,96 @@ class ConfluenceAgent(BaseAgent):
         parent_id: Optional[str] = None,
         labels: Optional[List[str]] = None,
     ) -> ConfluencePage:
-        payload = {"title": title, "content": content, "spaceKey": space_key, "parentId": parent_id, "labels": labels or []}
-        resp = await self.mcp_client.request("/confluence/pages", method="POST", json=payload)
-        return ConfluencePage(
+        logger.info(f"📄 Creating Confluence page in space '{space_key}': {title}")
+        logger.info(f"📝 Page details - Parent ID: {parent_id}, Content length: {len(content)} chars")
+        
+        payload = {
+            "type": "page",
+            "title": title,
+            "space": {"key": space_key},
+            "body": {
+                "storage": {
+                    "value": content,
+                    "representation": "storage"
+                }
+            }
+        }
+        
+        if parent_id:
+            payload["ancestors"] = [{"id": parent_id}]
+            
+        resp = await self.mcp_client.request("/content", method="POST", json=payload)
+        
+        page = ConfluencePage(
             id=resp["id"],
             title=resp["title"],
-            content=resp["content"],
-            space_key=resp["spaceKey"],
-            parent_id=resp.get("parentId"),
-            version=resp["version"],
-            status=resp["status"],
-            created=datetime.fromisoformat(resp["created"]),
-            updated=datetime.fromisoformat(resp["updated"]),
-            author=resp["author"],
-            labels=resp.get("labels", []),
-            attachments=resp.get("attachments", []),
-            children=resp.get("children", []),
+            content=resp.get("body", {}).get("storage", {}).get("value", ""),
+            space_key=resp.get("space", {}).get("key", ""),
+            parent_id=resp.get("ancestors", [])[-1]["id"] if resp.get("ancestors") else None,
+            version=resp.get("version", {}).get("number", 1),
+            status=resp.get("status", "current"),
+            created=datetime.fromisoformat(resp.get("createdDate", "").replace("Z", "+00:00")) if resp.get("createdDate") else datetime.now(),
+            updated=datetime.fromisoformat(resp.get("version", {}).get("when", "").replace("Z", "+00:00")) if resp.get("version", {}).get("when") else datetime.now(),
+            author=resp.get("version", {}).get("by", {}).get("displayName", ""),
+            labels=resp.get("metadata", {}).get("labels", {}).get("results", []),
+            attachments=[],
+            children=[],
         )
+        
+        # Log detailed creation information
+        logger.info(f"🎯 Confluence Page Created Successfully:")
+        logger.info(f"   📌 ID: {page.id}")
+        logger.info(f"   📋 Title: {page.title}")
+        logger.info(f"   🏗️ Space: {page.space_key}")
+        logger.info(f"   📄 Version: {page.version}")
+        logger.info(f"   📅 Created: {page.created.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"   👤 Author: {page.author or 'Unknown'}")
+        logger.info(f"   🔗 URL: https://athonprompt.atlassian.net/wiki/spaces/{page.space_key}/pages/{page.id}")
+        
+        return page
 
     async def update_page(self, page_id: str, updates: Dict[str, Any]) -> ConfluencePage:
-        resp = await self.mcp_client.request(f"/confluence/pages/{page_id}", method="PUT", json=updates)
-        return ConfluencePage(
+        logger.info(f"🔄 Updating Confluence page: {page_id}")
+        logger.info(f"📝 Updates: {updates}")
+        
+        # Get current page version first
+        current_page = await self.mcp_client.request(f"/content/{page_id}", params={"expand": "version"})
+        current_version = current_page.get("version", {}).get("number", 1)
+        
+        payload = {
+            "version": {"number": current_version + 1},
+            **updates
+        }
+        
+        resp = await self.mcp_client.request(f"/content/{page_id}", method="PUT", json=payload)
+        
+        page = ConfluencePage(
             id=resp["id"],
             title=resp["title"],
-            content=resp["content"],
-            space_key=resp["spaceKey"],
-            parent_id=resp.get("parentId"),
-            version=resp["version"],
-            status=resp["status"],
-            created=datetime.fromisoformat(resp["created"]),
-            updated=datetime.fromisoformat(resp["updated"]),
-            author=resp["author"],
-            labels=resp.get("labels", []),
-            attachments=resp.get("attachments", []),
-            children=resp.get("children", []),
+            content=resp.get("body", {}).get("storage", {}).get("value", ""),
+            space_key=resp.get("space", {}).get("key", ""),
+            parent_id=resp.get("ancestors", [])[-1]["id"] if resp.get("ancestors") else None,
+            version=resp.get("version", {}).get("number", 1),
+            status=resp.get("status", "current"),
+            created=datetime.fromisoformat(resp.get("createdDate", "").replace("Z", "+00:00")) if resp.get("createdDate") else datetime.now(),
+            updated=datetime.fromisoformat(resp.get("version", {}).get("when", "").replace("Z", "+00:00")) if resp.get("version", {}).get("when") else datetime.now(),
+            author=resp.get("version", {}).get("by", {}).get("displayName", ""),
+            labels=resp.get("metadata", {}).get("labels", {}).get("results", []),
+            attachments=[],
+            children=[],
         )
+        
+        # Log detailed update information  
+        logger.info(f"🎯 Confluence Page Updated Successfully:")
+        logger.info(f"   📌 ID: {page.id}")
+        logger.info(f"   📋 Title: {page.title}")
+        logger.info(f"   🏗️ Space: {page.space_key}")
+        logger.info(f"   📄 Version: {page.version}")
+        logger.info(f"   📅 Updated: {page.updated.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"   👤 Author: {page.author or 'Unknown'}")
+        logger.info(f"   🔗 URL: https://athonprompt.atlassian.net/wiki/spaces/{page.space_key}/pages/{page.id}")
+        
+        return page
 
     def _get_cache(self, key: str):
         self._cleanup_cache()

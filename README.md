@@ -1,14 +1,15 @@
-# AI Scrum Master and Project Manager Assistant
+# AI Scrum Master and Project Manager Assistant (Google Agent Development Kit style)
 
-A comprehensive backend system for an AI-powered Scrum Master and Project Manager assistant that integrates with Jira, Confluence, and other project management tools through MCP (Model Context Protocol) servers.
+A comprehensive backend system for an AI-powered Scrum Master and Project Manager assistant that integrates with Jira, Confluence, and other project management tools via their REST APIs, orchestrated in a Google Agent Development Kit style using LiteLLM for the model interface.
 
 ## 🏗️ Architecture Overview
 
 The system is built with a modular, async-ready architecture consisting of:
 
 - **Core Orchestrator**: Central command router and coordinator
+- **ADK-style Coordinator**: LLM tool-calling orchestration (via LiteLLM) that selects Jira/Confluence tools
 - **Sub-Agents**: Specialized agents for different services (Jira, Confluence, etc.)
-- **MCP Integration**: Model Context Protocol clients for backend communication
+- **REST API Integration**: Direct integration with Atlassian REST APIs
 - **Async Processing**: Full async/await support for high-performance operations
 
 ```
@@ -52,7 +53,7 @@ The system is built with a modular, async-ready architecture consisting of:
 
 - **Python**: 3.9+
 - **Async Support**: Full asyncio compatibility
-- **Dependencies**: aiohttp for HTTP client operations
+- **Dependencies**: aiohttp for HTTP client operations; LiteLLM for ADK-style orchestration
 - **MCP Servers**: Remote or local MCP servers for backend integration
 
 ## 📦 Installation
@@ -76,7 +77,7 @@ The system is built with a modular, async-ready architecture consisting of:
 
 ## 🔧 Usage
 
-### Basic Setup
+### Basic Setup (Classic Orchestrator)
 
 ```python
 import asyncio
@@ -336,3 +337,159 @@ For support and questions:
 ---
 
 **Built with ❤️ for modern project management teams**
+
+---
+
+## 🧭 ADK-style Coordinator with LiteLLM
+
+This repository includes a coordinator `src/core/google_agent_development_kit_coordinator.py` that uses LiteLLM to perform LLM tool-calling. The tools are backed by the existing MCP-based Jira and Confluence agents.
+
+### Configure (.env)
+
+⚠️ **IMPORTANT**: Before running the project, you must obtain API tokens and configure your environment.
+
+1) Copy the example env file and fill values:
+
+```bash
+cp env.example .env
+```
+
+2) Edit `.env` and set your secrets and URLs. Environment variables are loaded automatically by the package.
+
+### 🔑 Required Tokens and Setup
+
+#### **1. LiteLLM Model Configuration**
+Set up your AI model provider:
+
+```bash
+# For OpenAI-compatible API (like Rakuten internal API)
+LITELLM_MODEL=openai/gpt-4o-mini
+LITELLM_API_BASE=https://your-api-endpoint.com/openai/v1
+LITELLM_API_KEY=your-api-key-here
+OPENAI_API_KEY=your-api-key-here  # Fallback for LiteLLM
+```
+
+#### **2. Atlassian API Tokens**
+
+##### **Jira & Confluence Setup:**
+
+1. **Create Atlassian Account**: Go to [atlassian.com](https://atlassian.com) and create an account
+2. **Generate API Token**:
+   - Go to [Atlassian Account Settings](https://id.atlassian.com/manage-profile/security/api-tokens)
+   - Click "Create API token"
+   - Give it a label (e.g., "AI Scrum Master")
+   - Copy the generated token
+
+3. **Get Your Atlassian Host**: Your Atlassian domain (e.g., `yourcompany.atlassian.net`)
+
+4. **Create Basic Auth Token**: Combine your email and API token:
+   ```bash
+   # Format: base64(email:api_token)
+   echo -n "your-email@domain.com:ATATT3xFfGF0..." | base64
+   ```
+
+5. **Configure in .env**:
+   ```bash
+   # Atlassian URLs
+   JIRA_MCP_URL=https://yourcompany.atlassian.net/rest/api/3
+   CONFLUENCE_MCP_URL=https://yourcompany.atlassian.net/wiki/rest/api
+   
+   # Authentication (use the base64 string from step 4)
+   JIRA_MCP_AUTH_TOKEN=Basic <base64-email:token>
+   CONFLUENCE_MCP_AUTH_TOKEN=Basic <base64-email:token>
+   ```
+
+#### **3. SSL Configuration**
+For development/testing with self-signed certificates:
+
+```bash
+# Set to "false" for development, "true" for production
+MCP_VERIFY_SSL=false
+```
+
+### 📋 Complete .env Example
+
+```bash
+# LiteLLM / Model configuration
+LITELLM_MODEL=openai/gpt-4o-mini
+LITELLM_API_BASE=https://api.openai.com/v1
+LITELLM_API_KEY=your-openai-api-key
+OPENAI_API_KEY=your-openai-api-key
+
+# Atlassian URLs
+JIRA_MCP_URL=https://yourcompany.atlassian.net/rest/api/3
+CONFLUENCE_MCP_URL=https://yourcompany.atlassian.net/wiki/rest/api
+
+# Atlassian Authentication
+JIRA_MCP_AUTH_TOKEN=Basic <base64-encoded-email:token>
+CONFLUENCE_MCP_AUTH_TOKEN=Basic <base64-encoded-email:token>
+
+# SSL verification (false for dev, true for production)
+MCP_VERIFY_SSL=false
+```
+
+### 🚨 Security Notes
+
+- **Never commit `.env` files**: The `.gitignore` excludes `.env` files automatically
+- **Use environment-specific tokens**: Different tokens for dev/staging/production
+- **Rotate tokens regularly**: Generate new API tokens periodically
+- **Limit token permissions**: Only grant necessary permissions to API tokens
+
+### Run the AI Scrum Master
+
+After setting up your `.env` file with the required tokens:
+
+```bash
+export PYTHONPATH=.
+python ai_scrum_master.py
+```
+
+The coordinator will either:
+- translate free-form instructions into tool calls chosen by the LLM, or
+- execute structured `Command`s directly against the tool backends.
+
+### 📊 Enhanced Logging
+
+The AI Scrum Master now includes comprehensive logging for all creation and update operations:
+
+#### **What Gets Logged:**
+- **🎫 Jira Issues**: Creation/update with full details (key, summary, assignee, priority, direct URLs)
+- **📄 Confluence Pages**: Creation/update with full details (ID, title, space, version, direct URLs)
+- **🤖 AI Processing**: Request processing, tool selection, and execution status
+- **📊 Operation Summaries**: High-level summaries of what was created/updated
+
+#### **Example Log Output:**
+```
+2025-08-11 16:30:05,771 - 🤖 AI Processing request: Create a Confluence page in space 'MFS'...
+2025-08-11 16:30:05,771 - 🔧 AI selected 1 tool(s) to execute
+2025-08-11 16:30:05,771 - 🛠️  Executing tool: confluence_create_page
+2025-08-11 16:30:05,771 - 📄 Creating Confluence page in space 'MFS': Enhanced Logging Test
+2025-08-11 16:30:06,779 - 🎯 Confluence Page Created Successfully:
+2025-08-11 16:30:06,779 -    📌 ID: 65933
+2025-08-11 16:30:06,779 -    📋 Title: Enhanced Logging Test
+2025-08-11 16:30:06,779 -    🔗 URL: https://athonprompt.atlassian.net/wiki/spaces/MFS/pages/65933
+2025-08-11 16:30:06,779 - 📊 CREATION SUMMARY - Confluence Page: Enhanced Logging Test (ID: 65933)
+```
+
+#### **Benefits:**
+- **🔍 Full Traceability**: Track every creation and modification
+- **🔗 Direct Access**: Click-ready URLs to all created content  
+- **📈 Progress Monitoring**: Real-time feedback on AI operations
+- **🐛 Easy Debugging**: Comprehensive error context and logs
+
+### Agent initialization style
+
+You can initialize agents using the requested style:
+
+```python
+from src.core.llm_agent import LlmAgent, LiteLlm
+
+splunk_agent = LlmAgent(
+    name="splunk_query_agent",
+    model=LiteLlm(
+        model="gpt-4.1-mini",
+        api_base="https://api.ai.public.rakuten-it.com/openai/v1",
+        api_key=os.getenv("LITELLM_API_KEY"),
+    ),
+)
+```

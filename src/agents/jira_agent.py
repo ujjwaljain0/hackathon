@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -14,8 +15,10 @@ logger = logging.getLogger(__name__)
 
 
 class JiraAgent(BaseAgent):
-    def __init__(self, mcp_server_url: str = "http://localhost:8000") -> None:
-        self.mcp_client = MCPClient(mcp_server_url, "jira")
+    def __init__(self, mcp_server_url: str = "https://athonprompt.atlassian.net/rest/api/3") -> None:
+        # Disable SSL verification for development - configure verify_ssl=True for production
+        verify_ssl = os.getenv("MCP_VERIFY_SSL", "false").lower() == "true"
+        self.mcp_client = MCPClient(mcp_server_url, "jira", verify_ssl=verify_ssl)
         self.agent_name = "jira_agent"
         self.cache: Dict[str, Any] = {}
         self.cache_ttl_seconds = 300
@@ -48,34 +51,46 @@ class JiraAgent(BaseAgent):
         if cached is not None:
             return cached
 
+        # Build JQL query for Jira REST API
+        jql_parts = []
+        if project:
+            jql_parts.append(f"project = {project}")
+        if status:
+            jql_parts.append(f"status = '{status}'")
+        if assignee:
+            jql_parts.append(f"assignee = '{assignee}'")
+        if issue_type:
+            jql_parts.append(f"issuetype = '{issue_type}'")
+        
+        jql = " AND ".join(jql_parts) if jql_parts else ""
+        
         response = await self.mcp_client.request(
-            "/jira/issues", method="GET", params={
-                "project": project or "",
-                "status": status or "",
-                "assignee": assignee or "",
-                "issueType": issue_type or "",
+            "/search", method="GET", params={
+                "jql": jql,
                 "maxResults": max_results,
+                "fields": "summary,description,status,priority,assignee,reporter,created,updated,project,issuetype,labels,components"
             }
         )
         issues: List[JiraIssue] = []
         for data in response.get("issues", []):
+            fields = data.get("fields", {})
             issues.append(
                 JiraIssue(
                     key=data["key"],
-                    summary=data["summary"],
-                    description=data.get("description"),
-                    status=data["status"],
-                    priority=data["priority"],
-                    assignee=data.get("assignee"),
-                    reporter=data["reporter"],
-                    created=datetime.fromisoformat(data["created"]),
-                    updated=datetime.fromisoformat(data["updated"]),
-                    project=data["project"],
-                    issue_type=data["issueType"],
-                    labels=data.get("labels", []),
-                    components=data.get("components", []),
-                    epic_link=data.get("epicLink"),
-                    sprint=data.get("sprint"),
+                    summary=fields.get("summary", ""),
+                    description=fields.get("description"),
+                    status=fields.get("status", {}).get("name", ""),
+                    priority=fields.get("priority", {}).get("name", ""),
+                    assignee=fields.get("assignee", {}).get("displayName") if fields.get("assignee") else None,
+                    reporter=fields.get("reporter", {}).get("displayName", ""),
+                    created=datetime.fromisoformat(fields.get("created", "").replace("Z", "+00:00")) if fields.get("created") else datetime.now(),
+                    updated=datetime.fromisoformat(fields.get("updated", "").replace("Z", "+00:00")) if fields.get("updated") else datetime.now(),
+                    project=fields.get("project", {}).get("key", ""),
+                    issue_type=fields.get("issuetype", {}).get("name", ""),
+                    labels=fields.get("labels", []),
+                    components=[c.get("name", "") for c in fields.get("components", [])],
+                    epic_link=fields.get("customfield_10014"),  # Epic Link field
+                    sprint=fields.get("customfield_10020"),     # Sprint field
                 )
             )
         self._set_cache(cache_key, issues)
@@ -91,55 +106,103 @@ class JiraAgent(BaseAgent):
         assignee: Optional[str] = None,
         labels: Optional[List[str]] = None,
     ) -> JiraIssue:
+        logger.info(f"🎫 Creating Jira issue in project '{project}': {summary}")
+        logger.info(f"📝 Issue details - Type: {issue_type}, Priority: {priority}, Assignee: {assignee}")
+        
         payload = {
-            "project": project,
-            "summary": summary,
-            "description": description or "",
-            "issueType": issue_type,
-            "priority": priority,
-            "assignee": assignee,
-            "labels": labels or [],
+            "fields": {
+                "project": {"key": project},
+                "summary": summary,
+                "description": description or "",
+                "issuetype": {"name": issue_type},
+                "priority": {"name": priority},
+            }
         }
-        resp = await self.mcp_client.request("/jira/issues", method="POST", json=payload)
+        
+        if assignee:
+            payload["fields"]["assignee"] = {"name": assignee}
+        if labels:
+            payload["fields"]["labels"] = [{"name": label} for label in labels]
+            
+        resp = await self.mcp_client.request("/issue", method="POST", json=payload)
+        # Get the created issue details
+        issue_key = resp["key"]
+        logger.info(f"✅ Successfully created Jira issue: {issue_key}")
+        
+        issue_detail = await self.mcp_client.request(f"/issue/{issue_key}")
+        
+        fields = issue_detail.get("fields", {})
         issue = JiraIssue(
-            key=resp["key"],
-            summary=resp["summary"],
-            description=resp.get("description"),
-            status=resp["status"],
-            priority=resp["priority"],
-            assignee=resp.get("assignee"),
-            reporter=resp["reporter"],
-            created=datetime.fromisoformat(resp["created"]),
-            updated=datetime.fromisoformat(resp["updated"]),
-            project=resp["project"],
-            issue_type=resp["issueType"],
-            labels=resp.get("labels", []),
-            components=resp.get("components", []),
-            epic_link=resp.get("epicLink"),
-            sprint=resp.get("sprint"),
+            key=issue_detail["key"],
+            summary=fields.get("summary", ""),
+            description=fields.get("description"),
+            status=fields.get("status", {}).get("name", ""),
+            priority=fields.get("priority", {}).get("name", ""),
+            assignee=fields.get("assignee", {}).get("displayName") if fields.get("assignee") else None,
+            reporter=fields.get("reporter", {}).get("displayName", ""),
+            created=datetime.fromisoformat(fields.get("created", "").replace("Z", "+00:00")) if fields.get("created") else datetime.now(),
+            updated=datetime.fromisoformat(fields.get("updated", "").replace("Z", "+00:00")) if fields.get("updated") else datetime.now(),
+            project=fields.get("project", {}).get("key", ""),
+            issue_type=fields.get("issuetype", {}).get("name", ""),
+            labels=fields.get("labels", []),
+            components=[c.get("name", "") for c in fields.get("components", [])],
+            epic_link=fields.get("customfield_10014"),
+            sprint=fields.get("customfield_10020"),
         )
+        
+        # Log detailed creation information
+        logger.info(f"🎯 Jira Issue Created Successfully:")
+        logger.info(f"   📌 Key: {issue.key}")
+        logger.info(f"   📋 Summary: {issue.summary}")
+        logger.info(f"   🏗️ Project: {issue.project}")
+        logger.info(f"   🔧 Type: {issue.issue_type}")
+        logger.info(f"   ⚡ Priority: {issue.priority}")
+        logger.info(f"   👤 Assignee: {issue.assignee or 'Unassigned'}")
+        logger.info(f"   📅 Created: {issue.created.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"   🔗 URL: https://athonprompt.atlassian.net/browse/{issue.key}")
+        
         self._invalidate_project_cache(project)
         return issue
 
     async def update_issue(self, issue_key: str, updates: Dict[str, Any]) -> JiraIssue:
-        resp = await self.mcp_client.request(f"/jira/issues/{issue_key}", method="PUT", json=updates)
+        logger.info(f"🔄 Updating Jira issue: {issue_key}")
+        logger.info(f"📝 Updates: {updates}")
+        
+        # Convert updates to Jira REST API format
+        payload = {"fields": updates}
+        await self.mcp_client.request(f"/issue/{issue_key}", method="PUT", json=payload)
+        
+        # Get updated issue details
+        resp = await self.mcp_client.request(f"/issue/{issue_key}")
+        fields = resp.get("fields", {})
         issue = JiraIssue(
             key=resp["key"],
-            summary=resp["summary"],
-            description=resp.get("description"),
-            status=resp["status"],
-            priority=resp["priority"],
-            assignee=resp.get("assignee"),
-            reporter=resp["reporter"],
-            created=datetime.fromisoformat(resp["created"]),
-            updated=datetime.fromisoformat(resp["updated"]),
-            project=resp["project"],
-            issue_type=resp["issueType"],
-            labels=resp.get("labels", []),
-            components=resp.get("components", []),
-            epic_link=resp.get("epicLink"),
-            sprint=resp.get("sprint"),
+            summary=fields.get("summary", ""),
+            description=fields.get("description"),
+            status=fields.get("status", {}).get("name", ""),
+            priority=fields.get("priority", {}).get("name", ""),
+            assignee=fields.get("assignee", {}).get("displayName") if fields.get("assignee") else None,
+            reporter=fields.get("reporter", {}).get("displayName", ""),
+            created=datetime.fromisoformat(fields.get("created", "").replace("Z", "+00:00")) if fields.get("created") else datetime.now(),
+            updated=datetime.fromisoformat(fields.get("updated", "").replace("Z", "+00:00")) if fields.get("updated") else datetime.now(),
+            project=fields.get("project", {}).get("key", ""),
+            issue_type=fields.get("issuetype", {}).get("name", ""),
+            labels=fields.get("labels", []),
+            components=[c.get("name", "") for c in fields.get("components", [])],
+            epic_link=fields.get("customfield_10014"),
+            sprint=fields.get("customfield_10020"),
         )
+        
+        # Log detailed update information
+        logger.info(f"🎯 Jira Issue Updated Successfully:")
+        logger.info(f"   📌 Key: {issue.key}")
+        logger.info(f"   📋 Summary: {issue.summary}")
+        logger.info(f"   🔧 Type: {issue.issue_type}")
+        logger.info(f"   ⚡ Priority: {issue.priority}")
+        logger.info(f"   👤 Assignee: {issue.assignee or 'Unassigned'}")
+        logger.info(f"   📅 Updated: {issue.updated.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"   🔗 URL: https://athonprompt.atlassian.net/browse/{issue.key}")
+        
         self._invalidate_project_cache(issue.project)
         return issue
 
